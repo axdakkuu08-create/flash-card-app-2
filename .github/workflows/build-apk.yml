@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           mkdir -p extracted
           ARCHIVE=""
-          for candidate in js-flashcards-fixed.zip js-flashcards-offline-admin-12.zip js-flashcards.zip; do
+          for candidate in js-flashcards-offline-admin-12.zip js-flashcards-fixed.zip js-flashcards.zip; do
             if [ -f "$candidate" ]; then ARCHIVE="$candidate"; break; fi
           done
           if [ -z "$ARCHIVE" ]; then
@@ -114,26 +114,19 @@ jobs:
             # Android WebView can block file:// JavaScript loading sibling file:// scripts.
             # Inline both local React bundles into index.html so the flashcards render offline.
             python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/scheduler.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
-          import pathlib, sys
+          import pathlib, re, sys
           html_path, react_path, scheduler_path, dom_path = map(pathlib.Path, sys.argv[1:])
           html = html_path.read_text(encoding="utf-8")
-          replacements = [
-              ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
-              ('<script src="vendor/react-dom.production.min.js"></script>', scheduler_path.read_text(encoding="utf-8")),
-              ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
-          ]
-          # Replace React first, then insert Scheduler before the ReactDOM bundle.
-          react_tag = replacements[0][0]
-          if html.count(react_tag) != 1:
-              raise SystemExit(f"Expected exactly one {react_tag!r} in index.html")
-          html = html.replace(react_tag, "<script>\n" + replacements[0][1] + "\n</script>", 1)
-          dom_tag = '<script src="vendor/react-dom.production.min.js"></script>'
-          if html.count(dom_tag) != 1:
-              raise SystemExit(f"Expected exactly one {dom_tag!r} in index.html")
-          html = html.replace(dom_tag, "<script>\n" + scheduler_path.read_text(encoding="utf-8") + "\n</script>\n<script>\n" + dom_path.read_text(encoding="utf-8") + "\n</script>", 1)
+          def inline_one(filename, code):
+              global html
+              pattern = re.compile(r'<script\\b(?=[^>]*\\bsrc=[\"\\'][^\"\\']*' + re.escape(filename) + r'[\"\\'])[^>]*>\\s*</script>', re.I)
+              html, count = pattern.subn(lambda _: '<script>\\n' + code + '\\n</script>', html, count=1)
+              if count != 1:
+                  raise SystemExit(f"Expected one script tag referencing {filename}; found {count}")
+          inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
+          inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\\n" + dom_path.read_text(encoding="utf-8"))
           html_path.write_text(html, encoding="utf-8")
-          assert 'src="vendor/react.production.min.js"' not in html
-          assert 'src="vendor/react-dom.production.min.js"' not in html
+          assert not re.search(r'<script\\b[^>]*\\bsrc=[\"\\'][^\"\\']*react(?:-dom)?\\.production\\.min\\.js', html, re.I)
           print("Inlined React, Scheduler, and ReactDOM for offline WebView startup.")
           PY
             test -s "$VENDOR_DIR/react.production.min.js"
@@ -169,17 +162,20 @@ jobs:
 
             # ReactDOM 18 needs Scheduler. Inline all scripts to avoid file:// loading failures.
             python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/scheduler.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
-          import pathlib, sys
+          import pathlib, re, sys
           html_path, react_path, scheduler_path, dom_path = map(pathlib.Path, sys.argv[1:])
           html = html_path.read_text(encoding="utf-8")
-          react_tag = '<script src="vendor/react.production.min.js"></script>'
-          dom_tag = '<script src="vendor/react-dom.production.min.js"></script>'
-          if html.count(react_tag) != 1 or html.count(dom_tag) != 1:
-              raise SystemExit("Could not find the expected React and ReactDOM script tags in index.html")
-          html = html.replace(react_tag, "<script>\\n" + react_path.read_text(encoding="utf-8") + "\\n</script>", 1)
-          html = html.replace(dom_tag, "<script>\\n" + scheduler_path.read_text(encoding="utf-8") + "\\n</script>\\n<script>\\n" + dom_path.read_text(encoding="utf-8") + "\\n</script>", 1)
+          def inline_one(filename, code):
+              global html
+              pattern = re.compile(r'<script\\b(?=[^>]*\\bsrc=[\"\\'][^\"\\']*' + re.escape(filename) + r'[\"\\'])[^>]*>\\s*</script>', re.I)
+              html, count = pattern.subn(lambda _: '<script>\\n' + code + '\\n</script>', html, count=1)
+              if count != 1:
+                  raise SystemExit(f"Expected one script tag referencing {filename}; found {count}")
+          inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
+          inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\\n" + dom_path.read_text(encoding="utf-8"))
           html_path.write_text(html, encoding="utf-8")
-          print("Inlined React, Scheduler, and ReactDOM into index.html.")
+          assert not re.search(r'<script\\b[^>]*\\bsrc=[\"\\'][^\"\\']*react(?:-dom)?\\.production\\.min\\.js', html, re.I)
+          print("Inlined React, Scheduler, and ReactDOM for offline WebView startup.")
           PY
 
             WRAPPER="$RUNNER_TEMP/flashcards-capacitor"
