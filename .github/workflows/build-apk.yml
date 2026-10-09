@@ -105,7 +105,7 @@ jobs:
               https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
               -o "$VENDOR_DIR/react.production.min.js"
             curl --fail --location --silent --show-error --retry 3 \
-              https://cdnjs.cloudflare.com/ajax/libs/scheduler/0.23.2/scheduler.production.min.js \
+              https://unpkg.com/scheduler@0.23.2/umd/scheduler.production.min.js \
               -o "$VENDOR_DIR/scheduler.production.min.js"
             curl --fail --location --silent --show-error --retry 3 \
               https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
