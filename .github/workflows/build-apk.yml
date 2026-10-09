@@ -93,8 +93,8 @@ jobs:
                   raise SystemExit(f"Expected exactly one {tag!r} in index.html")
               html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
           html_path.write_text(html, encoding="utf-8")
-          assert "src=\\"vendor/react.production.min.js\\"" not in html
-          assert "src=\\"vendor/react-dom.production.min.js\\"" not in html
+          assert 'src="vendor/react.production.min.js"' not in html
+          assert 'src="vendor/react-dom.production.min.js"' not in html
           print("Inlined React and ReactDOM into index.html for offline WebView startup.")
           PY
             test -s "$VENDOR_DIR/react.production.min.js"
