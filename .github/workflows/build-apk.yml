@@ -105,29 +105,39 @@ jobs:
               https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
               -o "$VENDOR_DIR/react.production.min.js"
             curl --fail --location --silent --show-error --retry 3 \
+              https://cdnjs.cloudflare.com/ajax/libs/scheduler/0.23.2/scheduler.production.min.js \
+              -o "$VENDOR_DIR/scheduler.production.min.js"
+            curl --fail --location --silent --show-error --retry 3 \
               https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
               -o "$VENDOR_DIR/react-dom.production.min.js"
 
             # Android WebView can block file:// JavaScript loading sibling file:// scripts.
             # Inline both local React bundles into index.html so the flashcards render offline.
-            python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
+            python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/scheduler.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
           import pathlib, sys
-          html_path, react_path, dom_path = map(pathlib.Path, sys.argv[1:])
+          html_path, react_path, scheduler_path, dom_path = map(pathlib.Path, sys.argv[1:])
           html = html_path.read_text(encoding="utf-8")
           replacements = [
               ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
+              ('<script src="vendor/react-dom.production.min.js"></script>', scheduler_path.read_text(encoding="utf-8")),
               ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
           ]
-          for tag, script in replacements:
-              if html.count(tag) != 1:
-                  raise SystemExit(f"Expected exactly one {tag!r} in index.html")
-              html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
+          # Replace React first, then insert Scheduler before the ReactDOM bundle.
+          react_tag = replacements[0][0]
+          if html.count(react_tag) != 1:
+              raise SystemExit(f"Expected exactly one {react_tag!r} in index.html")
+          html = html.replace(react_tag, "<script>\n" + replacements[0][1] + "\n</script>", 1)
+          dom_tag = '<script src="vendor/react-dom.production.min.js"></script>'
+          if html.count(dom_tag) != 1:
+              raise SystemExit(f"Expected exactly one {dom_tag!r} in index.html")
+          html = html.replace(dom_tag, "<script>\n" + scheduler_path.read_text(encoding="utf-8") + "\n</script>\n<script>\n" + dom_path.read_text(encoding="utf-8") + "\n</script>", 1)
           html_path.write_text(html, encoding="utf-8")
           assert 'src="vendor/react.production.min.js"' not in html
           assert 'src="vendor/react-dom.production.min.js"' not in html
-          print("Inlined React and ReactDOM into index.html for offline WebView startup.")
+          print("Inlined React, Scheduler, and ReactDOM for offline WebView startup.")
           PY
             test -s "$VENDOR_DIR/react.production.min.js"
+            test -s "$VENDOR_DIR/scheduler.production.min.js"
             test -s "$VENDOR_DIR/react-dom.production.min.js"
 
 
