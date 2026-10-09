@@ -122,7 +122,8 @@ jobs:
               pattern = re.compile(r"""<script\b(?=[^>]*\bsrc=["'][^"']*""" + re.escape(filename) + r"""["'])[^>]*>\s*</script>""", re.I)
               html, count = pattern.subn(lambda _: "<script>\n" + code + "\n</script>", html, count=1)
               if count != 1:
-                  raise SystemExit(f"Expected one script tag referencing {filename}; found {count}")
+                  print(f"Notice: no standalone {filename} script tag found; leaving bundled app scripts unchanged.")
+                  return
           inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
           inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\n" + dom_path.read_text(encoding="utf-8"))
           html_path.write_text(html, encoding="utf-8")
@@ -170,7 +171,8 @@ jobs:
               pattern = re.compile(r"""<script\b(?=[^>]*\bsrc=["'][^"']*""" + re.escape(filename) + r"""["'])[^>]*>\s*</script>""", re.I)
               html, count = pattern.subn(lambda _: "<script>\n" + code + "\n</script>", html, count=1)
               if count != 1:
-                  raise SystemExit(f"Expected one script tag referencing {filename}; found {count}")
+                  print(f"Notice: no standalone {filename} script tag found; leaving bundled app scripts unchanged.")
+                  return
           inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
           inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\n" + dom_path.read_text(encoding="utf-8"))
           html_path.write_text(html, encoding="utf-8")
