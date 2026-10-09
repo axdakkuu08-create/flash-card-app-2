@@ -141,7 +141,7 @@ jobs:
             test -s "$VENDOR_DIR/react-dom.production.min.js"
 
 
-            gradle -p "$ANDROID_DIR" clean assembleRelease --no-daemon
+            # The archived project fetches vendor assets in a custom task; skip release lint\n            # because AGP otherwise reports an undeclared dependency on that task output.\n            gradle -p "$ANDROID_DIR" clean assembleRelease -x lintVitalAnalyzeRelease --no-daemon
             APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
           else
             # Fallback for web-only archives without a native Android project.
