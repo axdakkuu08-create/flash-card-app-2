@@ -20,16 +20,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          node-version: '20'
+          gradle-version: '8.9'
 
       - name: Inspect and extract project archive
         shell: bash
@@ -47,69 +47,62 @@ jobs:
           echo "Selected archive: $ARCHIVE"
           unzip -t "$ARCHIVE"
           unzip -q "$ARCHIVE" -d extracted
-          echo "Archive file listing (first 150 entries):"
           find extracted -type f -printf '%P\n' | sort | head -150
-          echo "Detected Android Gradle wrappers:"
-          find extracted -type f -name gradlew -print || true
-          echo "Detected web entry points:"
-          find extracted -type f -name index.html -not -path '*/node_modules/*' -print || true
 
       - name: Build APK
         shell: bash
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/extracted"
-          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+          OUT="$GITHUB_WORKSPACE/apk-output"
+          mkdir -p "$OUT"
 
-          # Prefer a complete Android Gradle project when its wrapper is included.
-          GRADLEW="$(find "$ROOT" -type f -name gradlew -print -quit || true)"
-          if [ -n "$GRADLEW" ]; then
-            ANDROID_DIR="$(dirname "$GRADLEW")"
+          # Prefer the supplied native Android project, even when it has no gradlew.
+          APP_GRADLE="$(find "$ROOT" -type f -path '*/android/app/build.gradle' -print -quit || true)"
+          if [ -n "$APP_GRADLE" ] && [ -f "$(dirname "$(dirname "$APP_GRADLE")")/build.gradle" ]; then
+            APP_DIR="$(dirname "$APP_GRADLE")"
+            ANDROID_DIR="$(dirname "$APP_DIR")"
             PROJECT_DIR="$(dirname "$ANDROID_DIR")"
-            echo "Android project: $ANDROID_DIR"
-            if [ -f "$PROJECT_DIR/package.json" ]; then
-              cd "$PROJECT_DIR"
-              if [ -f package-lock.json ]; then npm ci; else npm install; fi
-              npm run build --if-present
-            fi
-            if [ -f "$PROJECT_DIR/capacitor.config.ts" ] || [ -f "$PROJECT_DIR/capacitor.config.json" ] || [ -f "$PROJECT_DIR/capacitor.config.js" ]; then
-              (cd "$PROJECT_DIR" && npx cap sync android)
-            fi
-            cd "$ANDROID_DIR"
-            chmod +x ./gradlew
-            ./gradlew --no-daemon assembleDebug
-            APK="$(find "$ANDROID_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
-            if [ -z "$APK" ]; then echo "::error::Gradle completed but no debug APK was found."; exit 1; fi
-            cp "$APK" "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+            WEB_DIR="$PROJECT_DIR/web"
+
+            echo "Using native Android project: $ANDROID_DIR"
+            test -f "$WEB_DIR/index.html"
+
+            # Bundle React locally so app startup never waits for a CDN/network request.
+            VENDOR_DIR="$WEB_DIR/vendor"
+            mkdir -p "$VENDOR_DIR"
+            curl --fail --location --silent --show-error --retry 3 \
+              https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
+              -o "$VENDOR_DIR/react.production.min.js"
+            curl --fail --location --silent --show-error --retry 3 \
+              https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
+              -o "$VENDOR_DIR/react-dom.production.min.js"
+            test -s "$VENDOR_DIR/react.production.min.js"
+            test -s "$VENDOR_DIR/react-dom.production.min.js"
+
+            gradle -p "$ANDROID_DIR" clean assembleDebug --no-daemon
+            APK="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
           else
-            # Some ZIPs contain Android Gradle files but omit gradlew. In that
-            # case, package the web app with Capacitor, which supplies its own wrapper.
+            # Fallback for web-only archives without a native Android project.
             WEB_INDEX="$(find "$ROOT" -type f -path '*/web/index.html' -not -path '*/node_modules/*' -print -quit || true)"
             if [ -z "$WEB_INDEX" ]; then
               WEB_INDEX="$(find "$ROOT" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
             fi
-
-            # For projects without a prebuilt web entry point, try the package
-            # manifest nearest the archive root and then search again for index.html.
             if [ -z "$WEB_INDEX" ]; then
-              PACKAGE_JSON="$(find "$ROOT" -maxdepth 4 -type f -name package.json -not -path '*/node_modules/*' -print -quit || true)"
-              if [ -n "$PACKAGE_JSON" ]; then
-                APP_DIR="$(dirname "$PACKAGE_JSON")"
-                echo "Trying JavaScript build in $APP_DIR"
-                cd "$APP_DIR"
-                if [ -f package-lock.json ]; then npm ci; else npm install; fi
-                npm run build --if-present
-                WEB_INDEX="$(find "$APP_DIR" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
-              fi
-            fi
-
-            if [ -z "$WEB_INDEX" ]; then
-              echo "::error::No usable index.html found in the selected ZIP. See the archive inspection log."
+              echo "::error::No usable index.html found in the selected ZIP."
               exit 1
             fi
 
             WEB_DIR="$(dirname "$WEB_INDEX")"
-            echo "Packaging web assets from: $WEB_DIR"
+            VENDOR_DIR="$WEB_DIR/vendor"
+            mkdir -p "$VENDOR_DIR"
+            curl --fail --location --silent --show-error --retry 3 \
+              https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
+              -o "$VENDOR_DIR/react.production.min.js"
+            curl --fail --location --silent --show-error --retry 3 \
+              https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
+              -o "$VENDOR_DIR/react-dom.production.min.js"
+
             WRAPPER="$RUNNER_TEMP/flashcards-capacitor"
             mkdir -p "$WRAPPER/www"
             cp -a "$WEB_DIR"/. "$WRAPPER/www"/
@@ -122,11 +115,13 @@ jobs:
             cd android
             chmod +x ./gradlew
             ./gradlew --no-daemon assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+            APK="$WRAPPER/android/app/build/outputs/apk/debug/app-debug.apk"
           fi
 
-          test -s "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
-          ls -lh "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+          test -s "$APK"
+          unzip -tq "$APK" >/dev/null
+          cp "$APK" "$OUT/Flashcards-debug.apk"
+          ls -lh "$OUT/Flashcards-debug.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
