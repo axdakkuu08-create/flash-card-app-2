@@ -81,22 +81,22 @@ jobs:
             # Android WebView can block file:// JavaScript loading sibling file:// scripts.
             # Inline both local React bundles into index.html so the flashcards render offline.
             python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
-            import pathlib, sys
-            html_path, react_path, dom_path = map(pathlib.Path, sys.argv[1:])
-            html = html_path.read_text(encoding="utf-8")
-            replacements = [
-                ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
-                ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
-            ]
-            for tag, script in replacements:
-                if html.count(tag) != 1:
-                    raise SystemExit(f"Expected exactly one {tag!r} in index.html")
-                html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
-            html_path.write_text(html, encoding="utf-8")
-            assert "src=\\"vendor/react.production.min.js\\"" not in html
-            assert "src=\\"vendor/react-dom.production.min.js\\"" not in html
-            print("Inlined React and ReactDOM into index.html for offline WebView startup.")
-            PY
+          import pathlib, sys
+          html_path, react_path, dom_path = map(pathlib.Path, sys.argv[1:])
+          html = html_path.read_text(encoding="utf-8")
+          replacements = [
+              ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
+              ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
+          ]
+          for tag, script in replacements:
+              if html.count(tag) != 1:
+                  raise SystemExit(f"Expected exactly one {tag!r} in index.html")
+              html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
+          html_path.write_text(html, encoding="utf-8")
+          assert "src=\\"vendor/react.production.min.js\\"" not in html
+          assert "src=\\"vendor/react-dom.production.min.js\\"" not in html
+          print("Inlined React and ReactDOM into index.html for offline WebView startup.")
+          PY
             test -s "$VENDOR_DIR/react.production.min.js"
             test -s "$VENDOR_DIR/react-dom.production.min.js"
 
@@ -126,20 +126,20 @@ jobs:
 
             # Inline local React scripts to avoid Android WebView file:// restrictions.
             python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
-            import pathlib, sys
-            html_path, react_path, dom_path = map(pathlib.Path, sys.argv[1:])
-            html = html_path.read_text(encoding="utf-8")
-            replacements = [
-                ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
-                ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
-            ]
-            for tag, script in replacements:
-                if html.count(tag) != 1:
-                    raise SystemExit(f"Expected exactly one {tag!r} in index.html")
-                html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
-            html_path.write_text(html, encoding="utf-8")
-            print("Inlined React and ReactDOM into index.html for offline startup.")
-            PY
+          import pathlib, sys
+          html_path, react_path, dom_path = map(pathlib.Path, sys.argv[1:])
+          html = html_path.read_text(encoding="utf-8")
+          replacements = [
+              ('<script src="vendor/react.production.min.js"></script>', react_path.read_text(encoding="utf-8")),
+              ('<script src="vendor/react-dom.production.min.js"></script>', dom_path.read_text(encoding="utf-8")),
+          ]
+          for tag, script in replacements:
+              if html.count(tag) != 1:
+                  raise SystemExit(f"Expected exactly one {tag!r} in index.html")
+              html = html.replace(tag, "<script>\n" + script + "\n</script>", 1)
+          html_path.write_text(html, encoding="utf-8")
+          print("Inlined React and ReactDOM into index.html for offline startup.")
+          PY
 
             WRAPPER="$RUNNER_TEMP/flashcards-capacitor"
             mkdir -p "$WRAPPER/www"
