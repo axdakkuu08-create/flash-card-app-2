@@ -1,1 +1,137 @@
+name: Build Android APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Inspect and extract project archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p extracted
+          ARCHIVE=""
+          for candidate in js-flashcards-offline-admin-12.zip js-flashcards-fixed.zip js-flashcards.zip; do
+            if [ -f "$candidate" ]; then ARCHIVE="$candidate"; break; fi
+          done
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::No supported project ZIP found in repository root."
+            exit 1
+          fi
+          echo "Selected archive: $ARCHIVE"
+          unzip -t "$ARCHIVE"
+          unzip -q "$ARCHIVE" -d extracted
+          echo "Archive file listing (first 150 entries):"
+          find extracted -type f -printf '%P\n' | sort | head -150
+          echo "SELECTED_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/extracted"
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+
+          # If the archive already contains an Android Gradle project, build it.
+          GRADLEW="$(find "$ROOT" -type f -name gradlew -print -quit || true)"
+          PACKAGE_JSON="$(find "$ROOT" -type f -name package.json -not -path '*/node_modules/*' -print -quit || true)"
+
+          if [ -n "$PACKAGE_JSON" ]; then
+            APP_DIR="$(dirname "$PACKAGE_JSON")"
+            echo "JavaScript project: $APP_DIR"
+            cd "$APP_DIR"
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            npm run build --if-present
+          else
+            APP_DIR=""
+          fi
+
+          if [ -n "$GRADLEW" ]; then
+            ANDROID_DIR="$(dirname "$GRADLEW")"
+            echo "Existing Android Gradle project: $ANDROID_DIR"
+            if [ -n "$APP_DIR" ] && { [ -f "$APP_DIR/capacitor.config.ts" ] || [ -f "$APP_DIR/capacitor.config.json" ] || [ -f "$APP_DIR/capacitor.config.js" ]; }; then
+              (cd "$APP_DIR" && npx cap sync android)
+            fi
+            cd "$ANDROID_DIR"
+            chmod +x ./gradlew
+            ./gradlew --no-daemon assembleDebug
+            APK="$(find "$ANDROID_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
+            if [ -z "$APK" ]; then echo "::error::Gradle completed but no debug APK was found."; exit 1; fi
+            cp "$APK" "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+          else
+            # Static HTML/JS projects are wrapped as an offline Capacitor Android app.
+            if [ -z "$APP_DIR" ]; then
+              INDEX="$(find "$ROOT" -type f -name index.html -print -quit || true)"
+              if [ -z "$INDEX" ]; then
+                echo "::error::No package.json or index.html found in the selected ZIP. Check the archive contents in the Inspect step."
+                exit 1
+              fi
+              WEB_DIR="$(dirname "$INDEX")"
+            else
+              WEB_DIR=""
+              for candidate in dist build www; do
+                if [ -f "$APP_DIR/$candidate/index.html" ]; then WEB_DIR="$APP_DIR/$candidate"; break; fi
+              done
+              if [ -z "$WEB_DIR" ] && [ -f "$APP_DIR/index.html" ]; then WEB_DIR="$APP_DIR"; fi
+              if [ -z "$WEB_DIR" ]; then
+                INDEX="$(find "$APP_DIR" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
+                if [ -n "$INDEX" ]; then WEB_DIR="$(dirname "$INDEX")"; fi
+              fi
+              if [ -z "$WEB_DIR" ]; then
+                echo "::error::No built index.html found. The project may need a custom build output directory."
+                exit 1
+              fi
+            fi
+
+            echo "Using web assets from: $WEB_DIR"
+            WRAPPER="$RUNNER_TEMP/flashcards-capacitor"
+            mkdir -p "$WRAPPER/www"
+            cp -a "$WEB_DIR"/. "$WRAPPER/www"/
+            cd "$WRAPPER"
+            npm init -y
+            npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+            npx cap init Flashcards com.axdak.flashcards --web-dir=www
+            npx cap add android
+            npx cap sync android
+            cd android
+            chmod +x ./gradlew
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+          fi
+
+          test -s "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+          ls -lh "$GITHUB_WORKSPACE/apk-output/Flashcards-debug.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flashcards-Android-APK
+          path: apk-output/Flashcards-debug.apk
+          if-no-files-found: error
+          retention-days: 14
