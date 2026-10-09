@@ -68,6 +68,36 @@ jobs:
             echo "Using native Android project: $ANDROID_DIR"
             test -f "$WEB_DIR/index.html"
 
+            # Create an installable, optimized release variant. The debug key is for
+            # personal testing only; Play Store distribution needs a private release key.
+            python3 - "$APP_DIR/build.gradle" "$ANDROID_DIR/app/src/main/AndroidManifest.xml" "$APP_DIR/src/main/java/com/jsflashcards/app/MainActivity.java" <<'PY'
+          import pathlib, sys
+          gradle_path, manifest_path, activity_path = map(pathlib.Path, sys.argv[1:])
+          gradle = gradle_path.read_text()
+          if "signingConfig signingConfigs.debug" not in gradle:
+              gradle = gradle.replace(
+                  "release {",
+                  "release {\n            signingConfig signingConfigs.debug",
+                  1
+              )
+          gradle_path.write_text(gradle)
+          manifest = manifest_path.read_text()
+          manifest = manifest.replace(
+              '<application',
+              '<application\n        android:hardwareAccelerated="true"',
+              1
+          )
+          manifest_path.write_text(manifest)
+          activity = activity_path.read_text()
+          activity = activity.replace(
+              "webView = new WebView(this);",
+              "webView = new WebView(this);\n        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);",
+              1
+          )
+          activity_path.write_text(activity)
+          print("Enabled hardware acceleration and configured an installable release build.")
+          PY
+
             # Bundle React locally so app startup never waits for a CDN/network request.
             VENDOR_DIR="$WEB_DIR/vendor"
             mkdir -p "$VENDOR_DIR"
@@ -101,8 +131,8 @@ jobs:
             test -s "$VENDOR_DIR/react-dom.production.min.js"
 
 
-            gradle -p "$ANDROID_DIR" clean assembleDebug --no-daemon
-            APK="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
+            gradle -p "$ANDROID_DIR" clean assembleRelease --no-daemon
+            APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
           else
             # Fallback for web-only archives without a native Android project.
             WEB_INDEX="$(find "$ROOT" -type f -path '*/web/index.html' -not -path '*/node_modules/*' -print -quit || true)"
@@ -158,13 +188,13 @@ jobs:
 
           test -s "$APK"
           unzip -tq "$APK" >/dev/null
-          cp "$APK" "$OUT/Flashcards-debug.apk"
-          ls -lh "$OUT/Flashcards-debug.apk"
+          cp "$APK" "$OUT/Flashcards.apk"
+          ls -lh "$OUT/Flashcards.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Flashcards-Android-APK
-          path: apk-output/Flashcards-debug.apk
+          path: apk-output/Flashcards.apk
           if-no-files-found: error
           retention-days: 14
