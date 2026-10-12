@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,6 +25,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,7 +55,7 @@ jobs:
           unzip -q "$ARCHIVE" -d extracted
           find extracted -type f -printf '%P\n' | sort | head -150
 
-      - name: Build APK
+      - name: Build offline Android APK
         shell: bash
         run: |
           set -euo pipefail
@@ -57,137 +63,105 @@ jobs:
           OUT="$GITHUB_WORKSPACE/apk-output"
           mkdir -p "$OUT"
 
-          # Prefer the supplied native Android project, even when it has no gradlew.
           APP_GRADLE="$(find "$ROOT" -type f -path '*/android/app/build.gradle' -print -quit || true)"
-          if [ -n "$APP_GRADLE" ] && [ -f "$(dirname "$(dirname "$APP_GRADLE")")/build.gradle" ]; then
+          if [ -n "$APP_GRADLE" ]; then
             APP_DIR="$(dirname "$APP_GRADLE")"
             ANDROID_DIR="$(dirname "$APP_DIR")"
             PROJECT_DIR="$(dirname "$ANDROID_DIR")"
             WEB_DIR="$PROJECT_DIR/web"
+            test -s "$WEB_DIR/index.html" || { echo "::error::Missing web/index.html at $WEB_DIR"; exit 1; }
+            test -s "$ANDROID_DIR/build.gradle" || { echo "::error::Missing Android root build.gradle"; exit 1; }
 
-            echo "Using native Android project: $ANDROID_DIR"
-            test -f "$WEB_DIR/index.html"
+            echo "Native Android project: $ANDROID_DIR"
+            echo "Web app: $WEB_DIR"
 
-            # Create an installable, optimized release variant. The debug key is for
-            # personal testing only; Play Store distribution needs a private release key.
-            python3 - "$APP_DIR/build.gradle" "$ANDROID_DIR/app/src/main/AndroidManifest.xml" "$APP_DIR/src/main/java/com/jsflashcards/app/MainActivity.java" <<'PY'
-          import pathlib, sys
-          gradle_path, manifest_path, activity_path = map(pathlib.Path, sys.argv[1:])
-          gradle = gradle_path.read_text()
-          if "signingConfig signingConfigs.debug" not in gradle:
-              gradle = gradle.replace(
-                  "release {",
-                  "release {\n            signingConfig signingConfigs.debug",
-                  1
-              )
-          gradle_path.write_text(gradle)
-          manifest = manifest_path.read_text()
-          manifest = manifest.replace(
-              '<application',
-              '<application\n        android:hardwareAccelerated="true"',
-              1
-          )
-          manifest_path.write_text(manifest)
-          activity = activity_path.read_text()
-          activity = activity.replace(
-              "webView = new WebView(this);",
-              "webView = new WebView(this);\n        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);",
-              1
-          )
-          activity_path.write_text(activity)
-          print("Enabled hardware acceleration and configured an installable release build.")
-          PY
+            # Obtain known-good React UMD files from npm and inline them into the
+            # packaged HTML so WebView never depends on network access at runtime.
+            VENDOR_ROOT="$RUNNER_TEMP/react-vendor"
+            mkdir -p "$VENDOR_ROOT"
+            npm install --prefix "$VENDOR_ROOT" --no-save --no-audit --no-fund react@18.3.1 react-dom@18.3.1 scheduler@0.23.2
+            REACT="$VENDOR_ROOT/node_modules/react/umd/react.production.min.js"
+            SCHEDULER="$VENDOR_ROOT/node_modules/scheduler/umd/scheduler.production.min.js"
+            REACTDOM="$VENDOR_ROOT/node_modules/react-dom/umd/react-dom.production.min.js"
+            for f in "$REACT" "$SCHEDULER" "$REACTDOM"; do
+              test -s "$f" || { echo "::error::Required offline JavaScript bundle is missing or empty: $f"; exit 1; }
+            done
 
-            # Bundle React locally so app startup never waits for a CDN/network request.
-            VENDOR_DIR="$WEB_DIR/vendor"
-            mkdir -p "$VENDOR_DIR"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
-              -o "$VENDOR_DIR/react.production.min.js"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://unpkg.com/scheduler@0.23.2/umd/scheduler.production.min.js \
-              -o "$VENDOR_DIR/scheduler.production.min.js"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
-              -o "$VENDOR_DIR/react-dom.production.min.js"
-
-            # Android WebView can block file:// JavaScript loading sibling file:// scripts.
-            # Inline both local React bundles into index.html so the flashcards render offline.
-            python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/scheduler.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
+            python3 - "$WEB_DIR/index.html" "$REACT" "$SCHEDULER" "$REACTDOM" <<'PY'
           import pathlib, re, sys
           html_path, react_path, scheduler_path, dom_path = map(pathlib.Path, sys.argv[1:])
           html = html_path.read_text(encoding="utf-8")
-          def inline_one(filename, code):
+          react = react_path.read_text(encoding="utf-8")
+          scheduler = scheduler_path.read_text(encoding="utf-8")
+          dom = dom_path.read_text(encoding="utf-8")
+
+          def inline_src(filename, code):
               global html
-              pattern = re.compile(r"""<script\b(?=[^>]*\bsrc=["'][^"']*""" + re.escape(filename) + r"""["'])[^>]*>\s*</script>""", re.I)
-              html, count = pattern.subn(lambda _: "<script>\n" + code + "\n</script>", html, count=1)
-              if count != 1:
-                  print(f"Notice: no standalone {filename} script tag found; leaving bundled app scripts unchanged.")
-                  return
-          inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
-          inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\n" + dom_path.read_text(encoding="utf-8"))
+              pattern = re.compile(
+                  r'<script\b(?=[^>]*\bsrc=["\'][^"\']*/?' + re.escape(filename) +
+                  r'["\'])[^>]*>\s*</script>',
+                  re.I
+              )
+              html, count = pattern.subn(lambda _: '<script>\n' + code + '\n</script>', html, count=1)
+              return count
+
+          # ReactDOM 18 expects the Scheduler global. Inline Scheduler immediately
+          # before ReactDOM, even if the archive originally had a separate script.
+          react_count = inline_src("react.production.min.js", react)
+          dom_count = inline_src("react-dom.production.min.js", scheduler + "\n" + dom)
+          # Remove a standalone Scheduler script if present; it is already bundled above.
+          html = re.sub(
+              r'<script\b(?=[^>]*\bsrc=["\'][^"\']*/?scheduler\.production\.min\.js["\'])[^>]*>\s*</script>',
+              '',
+              html,
+              flags=re.I
+          )
+          if re.search(r'<script\b[^>]*\bsrc=["\'][^"\']*(?:react|react-dom|scheduler)\.production\.min\.js', html, re.I):
+              raise SystemExit("A React/Scheduler CDN or file script reference remains in index.html.")
+          print(f"Offline bundles prepared (React tag replacements: {react_count}; ReactDOM tag replacements: {dom_count}).")
           html_path.write_text(html, encoding="utf-8")
-          remaining = re.findall(r"""<script\b[^>]*\bsrc=["'][^"']*react(?:-dom)?\.production\.min\.js[^"']*["'][^>]*>\s*</script>""", html, re.I)
-          if remaining:
-              print("Warning: some React script references remain; continuing to Gradle build for diagnostics.")
-          print("Inlined React, Scheduler, and ReactDOM for offline WebView startup.")
           PY
-            test -s "$VENDOR_DIR/react.production.min.js"
-            test -s "$VENDOR_DIR/scheduler.production.min.js"
-            test -s "$VENDOR_DIR/react-dom.production.min.js"
 
+            # Enable hardware acceleration without duplicating the manifest attribute.
+            python3 - "$ANDROID_DIR/app/src/main/AndroidManifest.xml" <<'PY'
+          import pathlib, re, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8")
+          m = re.search(r'<application\b[^>]*>', s, re.S)
+          if not m:
+              raise SystemExit("AndroidManifest.xml has no application element.")
+          tag = m.group(0)
+          if 'android:hardwareAccelerated=' not in tag:
+              s = s[:m.start()] + tag[:-1] + '\n        android:hardwareAccelerated="true">' + s[m.end():]
+          p.write_text(s, encoding="utf-8")
+          PY
 
-            # The archived project fetches vendor assets in a custom task; skip release lint\n            # because AGP otherwise reports an undeclared dependency on that task output.\n            gradle -p "$ANDROID_DIR" clean assembleRelease -x lintVitalAnalyzeRelease --no-daemon
+            # Build a locally installable release APK. Debug signing is for personal
+            # testing only; Play Store distribution requires a private release key.
+            python3 - "$APP_DIR/build.gradle" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8")
+          if 'signingConfig signingConfigs.debug' not in s and re.search(r'\brelease\s*\{', s):
+              import re
+              s = re.sub(r'(\brelease\s*\{)', r'\1\n            signingConfig signingConfigs.debug', s, count=1)
+              p.write_text(s, encoding="utf-8")
+          PY
+            gradle -p "$ANDROID_DIR" clean assembleRelease -x lintVitalAnalyzeRelease --no-daemon --stacktrace
             APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
           else
-            # Fallback for web-only archives without a native Android project.
-            WEB_INDEX="$(find "$ROOT" -type f -path '*/web/index.html' -not -path '*/node_modules/*' -print -quit || true)"
+            WEB_INDEX="$(find "$ROOT" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
             if [ -z "$WEB_INDEX" ]; then
-              WEB_INDEX="$(find "$ROOT" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
-            fi
-            if [ -z "$WEB_INDEX" ]; then
-              echo "::error::No usable index.html found in the selected ZIP."
+              echo "::error::No Android project or usable index.html found in the selected ZIP."
               exit 1
             fi
-
             WEB_DIR="$(dirname "$WEB_INDEX")"
-            VENDOR_DIR="$WEB_DIR/vendor"
-            mkdir -p "$VENDOR_DIR"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js \
-              -o "$VENDOR_DIR/react.production.min.js"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://unpkg.com/scheduler@0.23.2/umd/scheduler.production.min.js \
-              -o "$VENDOR_DIR/scheduler.production.min.js"
-            curl --fail --location --silent --show-error --retry 3 \
-              https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js \
-              -o "$VENDOR_DIR/react-dom.production.min.js"
-
-            # ReactDOM 18 needs Scheduler. Inline all scripts to avoid file:// loading failures.
-            python3 - "$WEB_DIR/index.html" "$VENDOR_DIR/react.production.min.js" "$VENDOR_DIR/scheduler.production.min.js" "$VENDOR_DIR/react-dom.production.min.js" <<'PY'
-          import pathlib, re, sys
-          html_path, react_path, scheduler_path, dom_path = map(pathlib.Path, sys.argv[1:])
-          html = html_path.read_text(encoding="utf-8")
-          def inline_one(filename, code):
-              global html
-              pattern = re.compile(r"""<script\b(?=[^>]*\bsrc=["'][^"']*""" + re.escape(filename) + r"""["'])[^>]*>\s*</script>""", re.I)
-              html, count = pattern.subn(lambda _: "<script>\n" + code + "\n</script>", html, count=1)
-              if count != 1:
-                  print(f"Notice: no standalone {filename} script tag found; leaving bundled app scripts unchanged.")
-                  return
-          inline_one("react.production.min.js", react_path.read_text(encoding="utf-8"))
-          inline_one("react-dom.production.min.js", scheduler_path.read_text(encoding="utf-8") + "\n" + dom_path.read_text(encoding="utf-8"))
-          html_path.write_text(html, encoding="utf-8")
-          assert not re.search(r"""<script\b[^>]*\bsrc=["'][^"']*react(?:-dom)?\.production\.min\.js""", html, re.I)
-          print("Inlined React, Scheduler, and ReactDOM for offline WebView startup.")
-          PY
-
             WRAPPER="$RUNNER_TEMP/flashcards-capacitor"
             mkdir -p "$WRAPPER/www"
             cp -a "$WEB_DIR"/. "$WRAPPER/www"/
             cd "$WRAPPER"
             npm init -y
-            npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+            npm install --no-audit --no-fund @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
             npx cap init Flashcards com.axdak.flashcards --web-dir=www
             npx cap add android
             npx cap sync android
@@ -197,7 +171,7 @@ jobs:
             APK="$WRAPPER/android/app/build/outputs/apk/debug/app-debug.apk"
           fi
 
-          test -s "$APK"
+          test -s "$APK" || { echo "::error::Gradle did not produce the expected APK: $APK"; exit 1; }
           unzip -tq "$APK" >/dev/null
           cp "$APK" "$OUT/Flashcards.apk"
           ls -lh "$OUT/Flashcards.apk"
