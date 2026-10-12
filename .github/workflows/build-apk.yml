@@ -135,19 +135,9 @@ jobs:
           p.write_text(s, encoding="utf-8")
           PY
 
-            # Build a locally installable release APK. Debug signing is for personal
-            # testing only; Play Store distribution requires a private release key.
-            python3 - "$APP_DIR/build.gradle" <<'PY'
-          import pathlib, sys
-          p = pathlib.Path(sys.argv[1])
-          s = p.read_text(encoding="utf-8")
-          if 'signingConfig signingConfigs.debug' not in s and re.search(r'\brelease\s*\{', s):
-              import re
-              s = re.sub(r'(\brelease\s*\{)', r'\1\n            signingConfig signingConfigs.debug', s, count=1)
-              p.write_text(s, encoding="utf-8")
-          PY
-            gradle -p "$ANDROID_DIR" clean assembleRelease -x lintVitalAnalyzeRelease --no-daemon --stacktrace
-            APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
+            # A debug APK is automatically signed for direct personal installation.
+            gradle -p "$ANDROID_DIR" clean assembleDebug --no-daemon --stacktrace
+            APK="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
           else
             WEB_INDEX="$(find "$ROOT" -type f -name index.html -not -path '*/node_modules/*' -print -quit || true)"
             if [ -z "$WEB_INDEX" ]; then
