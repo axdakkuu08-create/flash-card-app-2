@@ -1,6 +1,6 @@
 (function (root) {
   'use strict';
-  var M = root.FCModel, S = root.FCStore, CSV = root.FCCSV;
+  var M = root.FCModel, S = root.FCStore, CSV = root.FCCsvParser;
   if (!M || !S || !CSV) return;
   var rows = [], busy = false;
   function $(id) { return document.getElementById(id); }
@@ -54,8 +54,10 @@
         input.value = field[1] === 'tags' ? row.tags.join(', ') : row[field[1]];
         input.addEventListener(field[1] === 'tags' ? 'change' : 'input', function () {
           try {
+            var wasValid = row.valid;
             row[field[1]] = field[1] === 'tags' ? parseTags(input.value) : input.value;
-            validate(row); render();
+            validate(row);
+            if (wasValid !== row.valid) render(); else updateCounts();
           } catch (err) { input.setCustomValidity(err.message); input.reportValidity(); }
         });
         card.appendChild(label); card.appendChild(input);
@@ -104,13 +106,14 @@
       deckId = M.makeId('deck'); newDeck = {id:deckId,title:title,createdAt:now};
     }
     if (!deckId) { $('csv-errors').textContent = 'Choose or create a deck.'; return; }
+    var totalRows = rows.length;
     var cards = chosen.map(function (r) {
       return Object.assign({id:M.makeId('card'),deckId:deckId,front:r.front.trim(),back:r.back.trim(),
         tags:M.normalizeTags(r.tags),createdAt:now,reviewHistory:[]}, M.freshSchedule(now));
     });
     busy = true; updateCounts();
     S.importCards(newDeck,cards).then(function () {
-      var summary = cards.length + ' imported; ' + (rows.length - cards.length) + ' not imported.';
+      var summary = cards.length + ' imported; ' + (totalRows - cards.length) + ' not imported.';
       $('csv-preview').close();
       var output = document.createElement('dialog'); output.className = 'confirm';
       var box = el('div','confirm-form stack');
@@ -120,7 +123,7 @@
       done.addEventListener('click',function(){output.close();output.remove();});
       box.appendChild(done); output.appendChild(box); document.body.appendChild(output); output.showModal();
       rows = []; busy = false;
-      root.dispatchEvent(new CustomEvent('flashcards:csv-imported',{detail:{imported:cards.length,notImported:rows.length-cards.length}}));
+      root.dispatchEvent(new CustomEvent('flashcards:csv-imported',{detail:{imported:cards.length,notImported:totalRows-cards.length}}));
     }).catch(function () {
       busy = false; $('csv-errors').textContent = 'Import failed. The transaction was rolled back; no partial cards were saved.';
       updateCounts();
