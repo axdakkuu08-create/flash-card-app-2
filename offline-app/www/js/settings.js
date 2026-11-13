@@ -15,6 +15,7 @@
       var backupAction = appView.querySelector('[data-action="export"]');
       var backupCard = backupAction && backupAction.closest('.card');
       if (backupCard) backupCard.hidden = true;
+      if (!settings.hidden) title.textContent = 'Settings';
     }
 
     var observer = new MutationObserver(hideDashboardBackup);
