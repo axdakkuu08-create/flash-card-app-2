@@ -23,7 +23,7 @@
   }
 
   function isBlankRow(fields) {
-    return fields.every(function (field) { return field.trim() === ''; });
+    return fields.length === 1 && fields[0].trim() === '';
   }
 
   /*
