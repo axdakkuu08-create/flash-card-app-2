@@ -23,6 +23,7 @@
 
     toggle.addEventListener('click', function () {
       var opening = settings.hidden;
+      if (opening) previousTitle = title.textContent;
       settings.hidden = !opening;
       appView.hidden = opening;
       if (dock) dock.hidden = opening;
