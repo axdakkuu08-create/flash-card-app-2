@@ -15,12 +15,38 @@
         <span class="dot" aria-hidden="true"></span>
         <h1 id="title">Dashboard</h1>
       </div>
-      <span class="pill">Works offline</span>
+      <div class="top-actions">
+        <span class="pill">Works offline</span>
+        <button id="settings-toggle" class="btn secondary small" type="button" aria-controls="settings-view" aria-expanded="false">Settings</button>
+      </div>
     </header>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <main id="view" class="view" tabindex="-1"></main>
+
+    <section id="settings-view" class="settings-view stack" tabindex="-1" aria-label="Settings" hidden>
+      <section class="card">
+        <p class="label">Data &amp; Backup</p>
+        <h2 class="settings-heading">Your learning data</h2>
+        <p class="sub">Save a portable copy of your decks, flashcards, and study progress, or restore a previous backup. Files are processed on this device; nothing is uploaded.</p>
+        <div class="row2">
+          <button class="btn primary" type="button" data-action="export">Export JSON backup</button>
+          <button class="btn secondary" type="button" data-action="import">Import JSON backup</button>
+        </div>
+        <p class="settings-note">Importing replaces the current library after you review and confirm the backup details. Export a fresh backup first if you want to keep a separate copy of your current data.</p>
+      </section>
+      <section class="card">
+        <p class="label">Privacy</p>
+        <h2 class="settings-heading">Offline by design</h2>
+        <p class="sub">Your flashcards stay in this app's local storage. There is no account, cloud sync, or automatic upload.</p>
+      </section>
+      <section class="card">
+        <p class="label">About</p>
+        <h2 class="settings-heading">Flashcards Offline</h2>
+        <p class="sub">An independent RETRO Technologies product proposal. Your study library remains yours to manage.</p>
+      </section>
+    </section>
 
     <input id="import-file" type="file" accept="application/json,.json" hidden>
 
@@ -60,5 +86,6 @@
   <script src="js/model.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/settings.js"></script>
 </body>
 </html>
