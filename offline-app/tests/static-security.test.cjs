@@ -21,7 +21,8 @@ test('the app does not load remote resources or make network requests', () => {
     'www/css/styles.css',
     'www/js/model.js',
     'www/js/store.js',
-    'www/js/app.js'
+    'www/js/app.js',
+    'www/js/settings.js'
   ];
   for (const file of files) {
     const source = read(file);
@@ -31,7 +32,7 @@ test('the app does not load remote resources or make network requests', () => {
 });
 
 test('user content is not inserted as HTML and the shell has no inline handlers', () => {
-  const scripts = ['www/js/model.js', 'www/js/store.js', 'www/js/app.js'];
+  const scripts = ['www/js/model.js', 'www/js/store.js', 'www/js/app.js', 'www/js/settings.js'];
   for (const file of scripts) {
     assert.doesNotMatch(read(file), /\.innerHTML\b|\.outerHTML\b|insertAdjacentHTML|document\.write\s*\(|\beval\s*\(|new\s+Function\s*\(/, 'unsafe HTML/code sink in ' + file);
   }
