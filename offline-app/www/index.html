@@ -33,6 +33,7 @@
         <div class="row2">
           <button class="btn primary" type="button" data-action="export">Export JSON backup</button>
           <button class="btn secondary" type="button" data-action="import">Import JSON backup</button>
+          <button class="btn secondary" type="button" data-action="import-csv">Import CSV cards</button>
         </div>
         <p class="settings-note">Importing replaces the current library after you review and confirm the backup details. Export a fresh backup first if you want to keep a separate copy of your current data.</p>
       </section>
@@ -49,6 +50,23 @@
     </section>
 
     <input id="import-file" type="file" accept="application/json,.json" hidden>
+    <input id="csv-file" type="file" accept=".csv,text/csv" hidden>
+    <dialog id="csv-preview" class="confirm csv-preview" aria-labelledby="csv-preview-title">
+      <div class="confirm-form stack">
+        <h2 id="csv-preview-title">CSV import review</h2>
+        <p id="csv-summary" class="sub"></p><p id="csv-errors" class="form-error" role="alert"></p>
+        <label class="field-label" for="csv-deck">Import into deck</label><select id="csv-deck" class="field"></select>
+        <label class="field-label" for="csv-new-deck">Or create a new deck</label><input id="csv-new-deck" class="field" maxlength="120">
+        <section class="card stack"><h3>Bulk tags</h3>
+          <select id="csv-tag-mode" class="field"><option value="append">Add tags</option><option value="replace">Replace tags</option></select>
+          <input id="csv-bulk-tags" class="field" placeholder="exam, chapter-1">
+          <button id="csv-apply-tags" class="btn secondary" type="button">Apply to selected</button></section>
+        <div class="row2"><button id="csv-select-all" class="btn secondary" type="button">Select all valid</button><button id="csv-clear-selection" class="btn secondary" type="button">Clear selection</button></div>
+        <h3>Valid rows <span id="csv-valid-count"></span></h3><div id="csv-valid-list" class="stack"></div>
+        <h3>Invalid rows <span id="csv-invalid-count"></span></h3><div id="csv-invalid-list" class="stack"></div>
+        <div class="row2"><button id="csv-cancel" class="btn secondary" type="button">Cancel</button><button id="csv-import" class="btn primary" type="button">Import selected</button></div>
+      </div>
+    </dialog>
 
     <dialog id="confirm" class="confirm" aria-labelledby="confirm-text">
       <form method="dialog" class="confirm-form">
@@ -84,8 +102,10 @@
   </div>
 
   <script src="js/model.js"></script>
+  <script src="js/csv-parser.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/csv-import-ui.js"></script>
   <script src="js/settings.js"></script>
 </body>
 </html>
