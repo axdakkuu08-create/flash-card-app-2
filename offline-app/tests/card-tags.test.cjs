@@ -3,6 +3,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
+const vm = require('node:vm');
 const M = require(path.join(__dirname, '..', 'www', 'js', 'model.js'));
 
 describe('card tags and backup v4 compatibility', () => {
@@ -29,13 +30,15 @@ describe('card tags and backup v4 compatibility', () => {
   test('IndexedDB migration and CSV UI retain transactional and offline boundaries', () => {
     const store=fs.readFileSync(path.join(__dirname,'..','www','js','store.js'),'utf8');
     const ui=fs.readFileSync(path.join(__dirname,'..','www','js','csv-import-ui.js'),'utf8');
+    const html=fs.readFileSync(path.join(__dirname,'..','www','index.html'),'utf8');
+    assert.doesNotThrow(()=>new vm.Script(ui));
     assert.match(store,/var DB_VERSION = 2/);
     assert.match(store,/createIndex\('tags'.*multiEntry: true/);
     assert.match(store,/function importCards/);
     assert.match(store,/runTransaction\(\['decks', 'cards'\], 'readwrite'/);
     assert.match(ui,/FCCsvParser/);
-    assert.match(ui,/Select all valid/);
-    assert.match(ui,/Apply to selected/);
+    assert.match(html,/Select all valid/);
+    assert.match(html,/Apply to selected/);
     assert.doesNotMatch(ui,/fetch\(|XMLHttpRequest|WebSocket/);
   });
 });
