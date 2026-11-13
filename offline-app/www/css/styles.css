@@ -247,3 +247,19 @@ textarea.field { resize: vertical; min-height: 84px; }
 @media (prefers-reduced-motion: reduce) {
   .flashcard .face, .toast { transition: none; }
 }
+
+
+/* Settings */
+[hidden] { display: none !important; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.settings-view { padding-bottom: 24px; }
+.settings-heading { font-size: 1.05rem; margin-top: 2px; }
+.settings-note { color: var(--muted); font-size: 0.78rem; line-height: 1.5; margin-top: 12px; }
+.settings-view .row2 { margin-top: 16px; }
+.settings-view .row2 .btn { min-width: 0; padding-left: 8px; padding-right: 8px; }
+
+@media (max-width: 380px) {
+  .top-actions { gap: 6px; }
+  .top-actions .pill { display: none; }
+  .settings-view .row2 { grid-template-columns: 1fr; }
+}
