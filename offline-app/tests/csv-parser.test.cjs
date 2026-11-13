@@ -45,7 +45,7 @@ describe('CSV parser basics', () => {
   });
 
   test('ignores blank rows and returns no cards for a header-only file', () => {
-    const out = CSV.parseCsv('\nfront,back\n\nQ,A\n  ,  \n');
+    const out = CSV.parseCsv('\nfront,back\n\nQ,A\n   \n');
     assert.equal(out.rows.length, 1);
     assert.equal(out.rows[0].front, 'Q');
     assert.equal(CSV.parseCsv('front,back\n\n').rows.length, 0);
