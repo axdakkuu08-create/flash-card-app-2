@@ -74,8 +74,10 @@
       var parsed = CSV.parseCsv(text);
       $('csv-errors').textContent = parsed.errors.map(function (e) { return e.message; }).join(' ');
       rows = parsed.rows.map(function (r, i) {
+        var tags = [], errors = r.errors.slice();
+        try { tags = M.normalizeTags(r.tags || []); } catch (err) { errors.push(err.message); }
         return { rowId:'preview-' + i, rowNumber:r.rowNumber, front:r.front, back:r.back,
-          tags:M.normalizeTags(r.tags || []), valid:r.valid, errors:r.errors.slice(), selected:!!r.valid };
+          tags:tags, valid:r.valid && errors.length === 0, errors:errors, selected:r.valid && errors.length === 0 };
       });
       S.loadAll().then(function (all) {
         var select = $('csv-deck'); select.textContent = '';
