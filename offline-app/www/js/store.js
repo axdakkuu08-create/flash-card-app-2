@@ -38,14 +38,14 @@
     }
     return new Promise(function (resolve, reject) {
       var request = root.indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = function () {
+      request.onupgradeneeded = function (event) {
         var database = request.result;
         if (!database.objectStoreNames.contains('decks')) database.createObjectStore('decks', { keyPath: 'id' });
         var cards = database.objectStoreNames.contains('cards') ? request.transaction.objectStore('cards') : database.createObjectStore('cards', { keyPath: 'id' });
         if (!cards.indexNames.contains('deckId')) cards.createIndex('deckId', 'deckId', { unique: false });
         if (!cards.indexNames.contains('tags')) cards.createIndex('tags', 'tags', { unique: false, multiEntry: true });
         if (!database.objectStoreNames.contains('meta')) database.createObjectStore('meta', { keyPath: 'key' });
-        if (request.oldVersion < 2) {
+        if (event.oldVersion < 2) {
           var cursorRequest = cards.openCursor();
           cursorRequest.onsuccess = function () {
             var cursor = cursorRequest.result;
