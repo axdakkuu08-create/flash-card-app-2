@@ -8,7 +8,7 @@ A standalone, offline-first flashcard app for personal use. Flashcards stay on t
 - Deck creation through card creation, deck search, and deck deletion with card cascade
 - Flashcard study with flip interaction and Hard / Good / Easy SM-2 scheduling
 - Local review history, streaks, and per-deck progress
-- JSON backup export and confirmed restore
+- Settings screen with JSON backup export and confirmed restore
 - Backup export format FlashcardsOffline version 2; imports versions 2 and 3
 
 ## Project layout
@@ -16,7 +16,8 @@ A standalone, offline-first flashcard app for personal use. Flashcards stay on t
 - www/: HTML, CSS, and JavaScript app; no npm dependencies or build step
 - www/js/model.js: scheduling, statistics, calendar arithmetic, and backup validation
 - www/js/store.js: IndexedDB persistence and atomic multi-record changes
-- www/js/app.js: user interface and actions
+- www/js/app.js: core user interface and actions
+- www/js/settings.js: Settings screen and backup controls placement
 - android/: Android WebView shell and Gradle project
 - tests/: Node unit tests and static security checks
 
@@ -40,7 +41,7 @@ The Gradle copyWww task bundles the current www/ app into the APK assets before 
 
 IndexedDB database: FlashcardsOfflineDB, served from the app's https://appassets.androidplatform.net origin. The Android app has no INTERNET permission. Data remains local unless the user explicitly exports a backup.
 
-Imports are size-limited and validated field by field before confirmation. A restore replaces the deck and card stores in one IndexedDB transaction. Rejected or cancelled imports do not change the current library.
+Open **Settings → Data & Backup** to export a JSON backup or import an existing one. Imports are size-limited and validated field by field before confirmation. A restore replaces the deck and card stores in one IndexedDB transaction. Rejected or cancelled imports do not change the current library.
 
 ## Security boundaries
 
@@ -55,10 +56,10 @@ Imports are size-limited and validated field by field before confirmation. A res
 
 ## Verification status
 
-- 31 model tests passed in the supplied archive.
-- 5 repository static security tests were added and passed locally.
+- 31 model tests and 5 repository static security tests passed in the previous verified CI run.
 - The previous scratchpad run reported 23 browser checks passing, but its Playwright harness is not included here; those checks are not yet reproducible in CI.
-- Android SDK/Gradle build and APK signature verification must pass in GitHub Actions.
+- Android SDK/Gradle build and APK signature verification passed in the previous GitHub Actions run.
+- The Settings UI change requires a fresh CI run and physical Android/browser verification.
 - Physical installation, IndexedDB persistence after force-stop/restart, import/export, and UI behavior still require testing on the target Android phone.
 
 This is a debug build, not a signed production release.
