@@ -6,7 +6,7 @@
   'use strict';
 
   var DB_NAME = 'FlashcardsOfflineDB';
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var db = null;
 
   function requestToPromise(request) {
@@ -40,10 +40,22 @@
       var request = root.indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = function () {
         var database = request.result;
-        database.createObjectStore('decks', { keyPath: 'id' });
-        var cards = database.createObjectStore('cards', { keyPath: 'id' });
-        cards.createIndex('deckId', 'deckId', { unique: false });
-        database.createObjectStore('meta', { keyPath: 'key' });
+        if (!database.objectStoreNames.contains('decks')) database.createObjectStore('decks', { keyPath: 'id' });
+        var cards = database.objectStoreNames.contains('cards') ? request.transaction.objectStore('cards') : database.createObjectStore('cards', { keyPath: 'id' });
+        if (!cards.indexNames.contains('deckId')) cards.createIndex('deckId', 'deckId', { unique: false });
+        if (!cards.indexNames.contains('tags')) cards.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+        if (!database.objectStoreNames.contains('meta')) database.createObjectStore('meta', { keyPath: 'key' });
+        if (request.oldVersion < 2) {
+          var cursorRequest = cards.openCursor();
+          cursorRequest.onsuccess = function () {
+            var cursor = cursorRequest.result;
+            if (cursor) {
+              var card = cursor.value;
+              if (!Array.isArray(card.tags)) { card.tags = []; cursor.update(card); }
+              cursor.continue();
+            }
+          };
+        }
       };
       request.onsuccess = function () {
         db = request.result;
@@ -100,6 +112,15 @@
     });
   }
 
+  /* Imports the optional new deck and every card in one all-or-nothing transaction. */
+  function importCards(newDeck, cards) {
+    if (!Array.isArray(cards) || cards.length === 0) return Promise.reject(new Error('Choose at least one valid card to import.'));
+    return runTransaction(['decks', 'cards'], 'readwrite', function (tx) {
+      if (newDeck) tx.objectStore('decks').add(newDeck);
+      cards.forEach(function (card) { tx.objectStore('cards').add(card); });
+    });
+  }
+
   /* Deletes the deck and all of its cards in one transaction. */
   function deleteDeck(deckId) {
     return runTransaction(['decks', 'cards'], 'readwrite', function (tx) {
@@ -122,6 +143,7 @@
     replaceAll: replaceAll,
     createCard: createCard,
     putCard: putCard,
+    importCards: importCards,
     deleteDeck: deleteDeck
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
