@@ -1,0 +1,9 @@
+android/app/src/main/assets/www/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+dist/
+node_modules/
+.DS_Store
+*.log
