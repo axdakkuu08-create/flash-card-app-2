@@ -228,7 +228,7 @@
     var rows = tokenized.rows;
     var errors = tokenized.errors.slice();
 
-    while (rows.length && isBlankRow(rows[rows.length - 1].fields)) rows.pop();
+    rows = rows.filter(function (row) { return !isBlankRow(row.fields); });
     if (!rows.length) {
       errors.push(error('The CSV file is empty.'));
       return { rows: [], errors: errors };
