@@ -9,8 +9,8 @@
   'use strict';
 
   var APP_NAME = 'FlashcardsOffline';
-  var EXPORT_VERSION = 2;
-  var ACCEPTED_VERSIONS = [2, 3];
+  var EXPORT_VERSION = 4;
+  var ACCEPTED_VERSIONS = [2, 3, 4];
 
   var DAY_MS = 24 * 60 * 60 * 1000;
   var HARD_DELAY_MS = 2 * 60 * 1000;
@@ -27,7 +27,9 @@
     cards: 5000,
     history: 200,
     title: 120,
-    text: 10000
+    text: 10000,
+    tags: 20,
+    tag: 40
   };
 
   var ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -242,6 +244,19 @@
     };
   }
 
+  function normalizeTags(raw) {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw) || raw.length > LIMITS.tags) throw new Error('Card tags are invalid.');
+    var seen = {};
+    var out = [];
+    raw.forEach(function (tag) {
+      var value = checkText(tag, 'Tag', LIMITS.tag);
+      var key = value.toLocaleLowerCase();
+      if (!seen[key]) { seen[key] = true; out.push(value); }
+    });
+    return out;
+  }
+
   function checkText(value, label, max) {
     if (typeof value !== 'string') {
       throw new Error(label + ' must be text.');
@@ -286,7 +301,7 @@
     }
 
     if (!isRecord(parsed) || parsed.app !== APP_NAME || ACCEPTED_VERSIONS.indexOf(parsed.version) === -1) {
-      throw new Error('Choose a Flashcards Offline backup (version 2 or 3).');
+      throw new Error('Choose a Flashcards Offline backup (version 2, 3 or 4).');
     }
     if (!Array.isArray(parsed.decks) || !Array.isArray(parsed.cards)) {
       throw new Error('The backup is missing its decks or cards.');
@@ -360,7 +375,8 @@
         easeFactor: c.easeFactor,
         nextReview: nextReview,
         createdAt: createdAt,
-        reviewHistory: reviewHistory
+        reviewHistory: reviewHistory,
+        tags: normalizeTags(c.tags)
       };
     });
 
@@ -373,7 +389,7 @@
       version: EXPORT_VERSION,
       exportedAt: new Date(now).toISOString(),
       decks: decks,
-      cards: cards
+      cards: cards.map(function (card) { return Object.assign({}, card, { tags: normalizeTags(card.tags) }); })
     }, null, 2);
   }
 
@@ -407,6 +423,7 @@
     EXPORT_VERSION: EXPORT_VERSION,
     LIMITS: LIMITS,
     makeId: makeId,
+    normalizeTags: normalizeTags,
     addDays: addDays,
     dayIndex: dayIndex,
     freshSchedule: freshSchedule,
